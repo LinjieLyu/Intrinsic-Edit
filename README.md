@@ -1,6 +1,9 @@
-# Intrinsic Decomposition-Based Image Editing
+# IntrinsicEdit: Precise Generative Image Manipulation in Intrinsic Space
 
-This project demonstrates an image editing method based on **intrinsic image decomposition**.
+**ACM Transactions on Graphics (Proceedings of SIGGRAPH), 2025**
+
+This is the official PyTorch implementation of the SIGGRAPH 2025 journal paper: [**IntrinsicEdit**](https://intrinsic-edit.github.io/)
+
 
 ## Environment
 
@@ -13,7 +16,7 @@ Pretrained models are loaded directly from the [RGBX repository](https://github.
 ## Pipeline
 
 1. Start with the original image.
-2. Use `rgb2x` from [RGBX](https://github.com/zheng95z/rgbx) to decompose the image into intrinsic channels (e.g., albedo, shading, irradiance). Try different seeds for potentially better decompositions.
+2. Use `rgb2x` from [RGBX](https://github.com/zheng95z/rgbx) to decompose the image into intrinsic channels (e.g., albedo, normal, irradiance). Try different seeds for potentially better decompositions.
 3. Edit one or more channels (e.g., modify the albedo channel for object removal or appearance editing).
 4. Run the demo to view the edited results.
 
