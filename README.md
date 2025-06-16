@@ -37,6 +37,7 @@ Input:
 - Original albedo
 - New (edited) albedo
 
+For more examples, please refer to [results](./images/results/)
 ## Note: 
 - If you want to edit other intrinsic channels (e.g. normal, roughness, irradiance), you must provide the original and new versions of that channel as a pair:
 
