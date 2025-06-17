@@ -14,7 +14,7 @@ Refer to the [RGBX repository](https://github.com/zheng95z/rgbx) for environment
 
 ## Trained Models
 
-Pretrained models are loaded directly from the [RGBX repository](https://github.com/zheng95z/rgbx).
+Pretrained models are download automatically to your huggingface cache folder during inference.
 
 ## Pipeline
 
