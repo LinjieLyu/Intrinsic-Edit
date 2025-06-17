@@ -1,6 +1,9 @@
-# IntrinsicEdit: Precise Generative Image Manipulation in Intrinsic Space
+<h1 align="center"> IntrinsicEdit: Precise Generative Image Manipulation in Intrinsic Space </h1>
 
-**ACM Transactions on Graphics (Proceedings of SIGGRAPH), 2025**
+<p align="center">ACM Transactions on Graphics (Proceedings of SIGGRAPH), 2025</p>
+
+<p align="center"><img src="images/teaser.png"></p>
+
 
 This is the official PyTorch implementation of the SIGGRAPH 2025 journal paper: [**IntrinsicEdit**](https://intrinsic-edit.github.io/)
 
