@@ -1569,67 +1569,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                 x_t = latents.detach().clone()
                 print(f"t: {t}, s: {s}, T: {T}")
                 
-                # lambda_s, lambda_t = self.scheduler.lambda_t[s], self.scheduler.lambda_t[t]
-                # sigma_s, sigma_t = self.scheduler.sigma_t[s], self.scheduler.sigma_t[t]
-                # h = lambda_t - lambda_s
-                # alpha_s, alpha_t = self.scheduler.alpha_t[s], self.scheduler.alpha_t[t]
-                # phi_1 = torch.expm1(-h)
-
-               
-                # # Expand the latents if we are doing classifier free guidance.
-                # # The latents are expanded 3 times because for pix2pix the guidance\
-                # # is applied for both the text and the input image.
-                # latent_model_input = (
-                #     torch.cat([latents] * 3) if do_classifier_free_guidance else latents
-                # )
-
-                # # concat latents, image_latents in the channel dimension
-                # scaled_latent_model_input = self.scheduler.scale_model_input(
-                #     latent_model_input, s
-                # )
-                # scaled_latent_model_input = torch.cat(
-                #     [scaled_latent_model_input, image_latents], dim=1
-                # )
-
-                # # predict the noise residual
-                # noise_pred = self.unet(
-                #     scaled_latent_model_input,
-                #     s,
-                #     encoder_hidden_states=prompt_embeds,
-                #     return_dict=False,
-                # )[0]
-
-                # # perform guidance
-                # if do_classifier_free_guidance:
-                #     (
-                #         noise_pred_text,
-                #         noise_pred_image,
-                #         noise_pred_uncond,
-                #     ) = noise_pred.chunk(3)
-                #     noise_pred = (
-                #         noise_pred_uncond
-                #         + guidance_scale * (noise_pred_text - noise_pred_image)
-                #         + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
-                #     )
-
-                # if do_classifier_free_guidance and guidance_rescale > 0.0:
-                #     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                #     noise_pred = rescale_noise_cfg(
-                #         noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-                #     )
-
-                # # convert noise to model output
-                # model_s = self.scheduler.convert_model_output(noise_pred, s, latents) 
-                # # model_s=torch.randn_like(latents)
-                    
-
-                # # Line 5
-                # latents = (sigma_s / sigma_t) * (latents + alpha_t * phi_1 * model_s)      
-                
-
-                # Line 7 : Update
-                # if (inverse_opt):
-                    
                 latents,noise_s = self.fixedpoint_correction(i,latents, s, t, x_t, order=1,latents_0=latents_0,image_latents=image_latents, prompt_embeds=prompt_embeds, guidance_scale=guidance_scale,image_guidance_scale=image_guidance_scale,
                                                     guidance_rescale=guidance_rescale,step_size=1.0, scheduler=True,**extra_step_kwargs)
                 
