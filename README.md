@@ -20,6 +20,7 @@ imageio_download_bin freeimage
 pip install gradio==3.48.0
 pip install markupsafe==2.0.1
 ```
+Note: If you encounter the huggingface_hub cached_download bug, see [here](https://github.com/easydiffusion/easydiffusion/issues/1851#issuecomment-2425265522)
 
 ## Trained Models
 
