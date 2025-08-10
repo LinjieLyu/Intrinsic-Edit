@@ -10,7 +10,16 @@ This is the official PyTorch implementation of the SIGGRAPH 2025 journal paper: 
 
 ## Environment
 
-Refer to the [RGBX repository](https://github.com/zheng95z/rgbx) for environment setup and dependencies.
+```
+conda create -n intrinsic python=3.9 -y
+conda activate intrinsic
+
+pip install diffusers["torch"]==0.20
+pip install transformers imageio torchvision wandb lpips opencv-python h5py
+imageio_download_bin freeimage
+pip install gradio==3.48.0
+pip install markupsafe==2.0.1
+```
 
 ## Trained Models
 
