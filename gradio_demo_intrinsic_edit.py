@@ -422,47 +422,6 @@ def get_x2rgb_inversion_demo():
             generated_image = (generated_image, f"Generated Image {i}")
             return_list.append(generated_image)
 
-            # generated_image = pipe(
-            #     mask=mask,
-            #     # prompt=prompt,
-            #     prompt_embeds=prompt_embeds,
-            #     negative_prompt_embeds=prompt_embeds,
-            #     photo=photo,
-            #     ########
-            #     albedo=recon_aovs['albedo'],
-            #     albedo_old=old_aovs['albedo'],
-            #     ########
-            #     normal=recon_aovs['normal'],
-            #     normal_old=old_aovs['normal'],
-            #     roughness=recon_aovs['roughness'],
-            #     roughness_old=old_aovs['roughness'],
-            #     metallic=recon_aovs['metallic'],
-            #     metallic_old=old_aovs['metallic'],
-            #     ########
-            #     irradiance=recon_aovs['irradiance'],
-            #     irradiance_old=old_aovs['irradiance'],
-            #     ########
-            #     num_inference_steps=inference_step,
-            #     height=height,
-            #     width=width,
-            #     generator=generator,
-            #     # latents=xT,
-            #     required_aovs=required_aovs,
-            #     guidance_scale=guidance_scale,
-            #     image_guidance_scale=image_guidance_scale,
-            #     guidance_rescale=0.7,
-            #     output_type="np",
-            #     ########
-        
-            #     traintext=traintext,
-
-            # ).images[0]
-
-            # generated_image = (generated_image, f"Generated Image {i}")
-            # return_list.append(generated_image)
-
-
-           
             
         return return_list
 
@@ -672,4 +631,5 @@ if __name__ == "__main__":
         # server_name="0.0.0.0",
         # server_port=PORT,
     )
+
 
