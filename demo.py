@@ -22,7 +22,7 @@ from fastapi import FastAPI
 
 # Local imports
 from dataset import load_exr_image, load_ldr_image
-from pipeline_stable_diffusion_intrinsic_edit import StableDiffusionAOVDropoutPipeline_Inversion
+from pipeline import StableDiffusionAOVDropoutPipeline_Inversion
 
 
 def create_intrinsicedit_demo():
