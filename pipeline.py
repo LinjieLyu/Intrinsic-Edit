@@ -37,10 +37,37 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from torch import autocast, inference_mode
 logger = logging.get_logger(__name__)
 
-import os 
+import os
 import safetensors
 from torch import nn
 from torchvision.transforms import GaussianBlur
+
+from accelerate import Accelerator
+from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DDIMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
+from diffusers.models.attention_processor import (
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    LoRAAttnAddedKVProcessor,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    SlicedAttnAddedKVProcessor,
+)
+from diffusers.optimization import get_scheduler
+import tqdm
+from accelerate.utils import set_seed
+from transformers import AutoConfig
+
+from torch.optim.lr_scheduler import ReduceLROnPlateau,LambdaLR
+import math
 
 
 class VaeImageProcrssorAOV(VaeImageProcessor):
@@ -278,7 +305,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             else:
                 attention_mask = None
 
-            print(text_input_ids.shape) 
+            print(text_input_ids.shape)
             prompt_embeds = self.text_encoder(
                 text_input_ids.to(device),
                 attention_mask=attention_mask,
@@ -459,10 +486,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             )
 
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
-            
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
@@ -482,9 +506,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         generator=None,
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
-            raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
-            )
+            raise ValueError(f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}")
 
         image = image.to(device=device, dtype=dtype)
 
@@ -542,17 +564,13 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         if do_classifier_free_guidance:
             if image_old is not None:
                 uncond_image_latents=self.vae.encode(image_old).latent_dist.mode()
-                
             else:
                 uncond_image_latents = torch.zeros_like(image_latents)
-            image_latents = torch.cat(
-                [image_latents, image_latents, uncond_image_latents], dim=0
-            )
+            image_latents = torch.cat([image_latents, image_latents, uncond_image_latents], dim=0)
 
         return image_latents
 
     def latent_optimization(self, measurement, z_init,mask, eps=1e-3, max_iters=50, lr=None):
-
         """
         Function to compute argmin_z ||y - A( D(z) )||_2^2
 
@@ -564,7 +582,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             max_iters:             Maximum number of GD iterations
 
         Optimal parameters seem to be at around 500 steps, 200 steps for inpainting.
-
         """
         with torch.enable_grad():
             # Base case
@@ -752,10 +769,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         traintext=False,
-
-        
     ):
-        
         # 0. Check inputs
         self.check_inputs(
             prompt,
@@ -855,9 +869,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                 albedo_mask, output_type='pil', do_denormalize=do_denormalize
             )[0]
 
-           
         if irradiance_old is not None:
-            preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)   
+            preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -922,12 +935,9 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                                 align_corners=False,
                                 antialias=True,
                             )
-                            
                         else:
                             uncond_image_latent = torch.zeros_like(image_latent)
-                        image_latent = torch.cat(
-                            [image_latent, image_latent, uncond_image_latent], dim=0
-                        )
+                        image_latent = torch.cat([image_latent, image_latent, uncond_image_latent], dim=0)
                 else:
                     scaling_factor = scaling_factors[aov_name]
                     image_latent = (
@@ -960,8 +970,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         )
         photo_latents = photo_latents * self.vae.config.scaling_factor
 
-            
-
         # 7. Check that shapes of latents and image match the UNet channels
         num_channels_image = image_latents.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
@@ -983,9 +991,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                
-                
-
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
                 # is applied for both the text and the input image.
@@ -1009,8 +1014,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                     return_dict=False,
                 )[0]
 
-
-
                 # perform guidance
                 if do_classifier_free_guidance:
                     (
@@ -1031,7 +1034,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                     )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                
+
                 latents_prev = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # if i%10==0:
                 #
@@ -1098,8 +1101,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             )
         else:
             return StableDiffusionAOVPipelineOutput(images=image)
-    
-    
+
+
     #@torch.no_grad()
     def forward_diffusion(
         self,
@@ -1353,8 +1356,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             albedo_mask, output_type='pil', do_denormalize=do_denormalize
             )[0]
 
-            
-
         if irradiance_old is not None:
             preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)
 
@@ -1444,12 +1445,9 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                                 align_corners=False,
                                 antialias=True,
                             )
-                            
                         else:
                             uncond_image_latent = torch.zeros_like(image_latent)
-                        image_latent = torch.cat(
-                            [image_latent, image_latent, uncond_image_latent], dim=0
-                        )
+                        image_latent = torch.cat([image_latent, image_latent, uncond_image_latent], dim=0)
                 else:
                     scaling_factor = scaling_factors[aov_name]
                     image_latent = (
@@ -1479,8 +1477,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             )
         else:
             irradiance_text_latent=None
-
-        
 
         # 7. Check that shapes of latents and image match the UNet channels
         num_channels_image = image_latents.shape[1]
@@ -1527,13 +1523,10 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         ).detach())
 
 
-        #### prompt optimization 
+        #### prompt optimization
         if traintext:
-    
-
             prompt_embeds=train_text(latents, image_latents,irradiance_text_latent,prompt_embeds_nocfg,rgb2x_prompt_embeds,preprocessed_aovs,unet=self.unet
                 ,augtext=augtext,transferweight=transferweight,originweight=originweight,traintext=traintext, text_lr=text_lr, steps=num_optimization_steps)
-            
 
         self.unet.requires_grad_(False)
 
@@ -1541,13 +1534,10 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         # with torch.no_grad():
         latents_0 = latents.detach().clone()
         image_latents= image_latents.detach().clone()
-        prompt_embeds = prompt_embeds.detach().clone()  
+        prompt_embeds = prompt_embeds.detach().clone()
         noise = torch.randn_like(latents)
-        
+
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-
-
-
 
         # Fixed point inversion
         # Note during the inversion there is no cfg guidance, so the guidance_scale and image_guidance_scale are set to 0.0
@@ -1563,31 +1553,26 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                     // self.scheduler.num_inference_steps
                 )
 
-                s = t 
+                s = t
                 t = prev_timestep
 
                 x_t = latents.detach().clone()
                 print(f"t: {t}, s: {s}, T: {T}")
-                
-                latents,noise_s = self.fixedpoint_correction(i,latents, s, t, x_t, order=1,latents_0=latents_0,image_latents=image_latents, prompt_embeds=prompt_embeds, guidance_scale=guidance_scale,image_guidance_scale=image_guidance_scale,
-                                                    guidance_rescale=guidance_rescale,step_size=1.0, scheduler=True,**extra_step_kwargs)
-                
-                     
-                
 
-
+                latents, noise_s = self.fixedpoint_correction(
+                    i,latents, s, t, x_t, order=1,latents_0=latents_0,image_latents=image_latents,
+                    prompt_embeds=prompt_embeds, guidance_scale=guidance_scale,image_guidance_scale=image_guidance_scale,
+                    guidance_rescale=guidance_rescale,step_size=1.0, scheduler=True,**extra_step_kwargs)
 
         return latents, prompt_embeds
 
-    # Find the previous latents from the current latents 
+    # Find the previous latents from the current latents
     # From https://github.com/smhongok/inv-dpm
     # @torch.inference_mode()
     def fixedpoint_correction(self, index,x, s, t, x_t, r=None, order=1, n_iter=40, step_size=0.1, th=2e-3,photo=None,mask=None,
                                 model_s_output=None, model_r_output=None, latents_0=None,image_latents=None, prompt_embeds=None, guidance_scale=0.0, image_guidance_scale=0.0,guidance_rescale=0.0,
                                 scheduler=False, factor=0.5, patience=20, anchor=False, warmup=True, warmup_time=20,**extra_step_kwargs):
-        do_classifier_free_guidance = (
-            guidance_scale >= 1.0 and image_guidance_scale >= 1.0
-        )
+        do_classifier_free_guidance = (guidance_scale >= 1.0 and image_guidance_scale >= 1.0)
         input_mean = self.scheduler.add_noise(latents_0, torch.zeros_like(latents_0), s)
         input=x.detach().clone()
         input.requires_grad_(True)
@@ -1599,9 +1584,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         alpha_s, alpha_t = self.scheduler.alpha_t[s], self.scheduler.alpha_t[t]
         phi_1 = torch.expm1(-h)
 
-        
         original_step_size = step_size
-        
+
         # step size scheduler, reduce when not improved
         if scheduler:
             step_scheduler = StepScheduler(current_lr=step_size, factor=factor, patience=patience)
@@ -1611,23 +1595,16 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             if warmup:
                 if i < warmup_time:
                     step_size = original_step_size * (i+1)/(warmup_time)
-            
+
             # Expand the latents if we are doing classifier free guidance.
             # The latents are expanded 3 times because for pix2pix the guidance\
             # is applied for both the text and the input image.
-            
 
-            latent_model_input = (
-                torch.cat([input] * 3) if do_classifier_free_guidance else input
-            )
+            latent_model_input = (torch.cat([input] * 3) if do_classifier_free_guidance else input)
 
             # concat latents, image_latents in the channel dimension
-            scaled_latent_model_input = self.scheduler.scale_model_input(
-                latent_model_input, s
-            )
-            scaled_latent_model_input = torch.cat(
-                [scaled_latent_model_input, image_latents], dim=1
-            )
+            scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, s)
+            scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
 
             # predict the noise residual
             noise_pred = self.unet(
@@ -1652,11 +1629,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
             if do_classifier_free_guidance and guidance_rescale > 0.0:
                 # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                noise_pred = rescale_noise_cfg(
-                    noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-                )
+                noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
-            
             x_t_pred=self.scheduler.step(noise_pred, s, input, **extra_step_kwargs).prev_sample
             # forward step method
             input.data = input.data - step_size * (x_t_pred - x_t)
@@ -1665,7 +1639,6 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             # input.data = (x_t+(alpha_t * phi_1 ) * model_output)/(sigma_t / sigma_s)
 
             n_loss = torch.nn.functional.mse_loss(x_t_pred.detach(), x_t.detach(), reduction='sum') #
-            #
             residual=input-input_mean
             # if index==0:
             #     loss=torch.nn.functional.mse_loss(self.vae.decode(x_t_pred/ self.vae.config.scaling_factor, return_dict=False)[0], photo.detach(), reduction='sum') #
@@ -1676,8 +1649,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             # noise_normalize_(residual)
             # input.data=input_mean+residual
 
-            if i%10==0:
-
+            if i % 10 == 0:
                 # free, total = torch.cuda.mem_get_info()
                 # mem_used_MB = (total - free) / 1024 ** 2
                 print(f"Loss: {n_loss.item()}") #, Memory used: {mem_used_MB} MB
@@ -1689,25 +1661,15 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             # residual_sqr/=residual_sqr.max()
             # input.data += torch.randn_like(input.data) * step_size * 0.005*(1-residual_sqr)
 
-
-            
-                
-                            
-            
-            
-
-            
-
             if scheduler:
-                
                 step_size = step_scheduler.step(n_loss)
                 noise_optimizer.param_groups[0]['lr'] = step_size
-                
-        # model_output = self.scheduler.convert_model_output(noise_pred, s, input).detach()
 
+        # model_output = self.scheduler.convert_model_output(noise_pred, s, input).detach()
         # x_t_pred = (sigma_t / sigma_s) * input - (alpha_t * phi_1 ) * model_output
 
-        return input.detach(),input-input_mean       
+        return input.detach(),input-input_mean
+
 
     def decoder_inv(self, x,z_int,mask=1.):
         with torch.enable_grad():
@@ -1735,16 +1697,13 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                 x_pred = self.vae.decode(z/ self.vae.config.scaling_factor, return_dict=False)[0]
 
                 loss = loss_function(x_pred*mask, input*mask)
-                
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 lr_scheduler.step()
             return z
-    
-   
-from torch.optim.lr_scheduler import ReduceLROnPlateau,LambdaLR
-import math
+
 def get_cosine_schedule_with_warmup(
     optimizer: torch.optim.Optimizer,
     num_warmup_steps: int,
@@ -1789,6 +1748,7 @@ def get_cosine_schedule_with_warmup(
         return max(0.0, cosine_lr_multiple)
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
+
 
 class StepScheduler(ReduceLROnPlateau):
     def __init__(self, mode='min', current_lr=0, factor=0.1, patience=10,
@@ -1859,33 +1819,8 @@ class StepScheduler(ReduceLROnPlateau):
 
 
 
-from accelerate import Accelerator
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    DDIMScheduler,
-    DiffusionPipeline,
-    DPMSolverMultistepScheduler,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
-)
-from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    SlicedAttnAddedKVProcessor,
-)
-from diffusers.optimization import get_scheduler
-import tqdm
-from accelerate.utils import set_seed
-from transformers import AutoConfig
-
-def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidden_states,rgb2x_prompt_embeds,preprocessed_aovs, 
+def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidden_states,rgb2x_prompt_embeds,preprocessed_aovs,
                unet=None, noise_scheduler=None, augtext=True,transferweight=1.0,originweight=1.0,steps=200, text_lr=1e-1, progress=tqdm,traintext=False):
-    
     # initialize accelerator
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
@@ -1896,42 +1831,26 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
     # initialize the model
     if noise_scheduler is None:
         noise_scheduler = DDIMScheduler.from_pretrained("zheng95z/x-to-rgb", subfolder="scheduler")
-        noise_scheduler = DDIMScheduler.from_config(
-            noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-        )
+        noise_scheduler = DDIMScheduler.from_config(noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
         noise_scheduler.set_timesteps(2)
-
         rgb2x_noise_scheduler = DDIMScheduler.from_pretrained("zheng95z/rgb-to-x", subfolder="scheduler")
-        rgb2x_noise_scheduler=DDIMScheduler.from_config(
-        rgb2x_noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-    )
+        rgb2x_noise_scheduler = DDIMScheduler.from_config(rgb2x_noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
         rgb2x_noise_scheduler.set_timesteps(2)
 
     timesteps = noise_scheduler.timesteps
     rgb2x_timesteps = rgb2x_noise_scheduler.timesteps
 
+    unet = UNet2DConditionModel.from_pretrained("zheng95z/x-to-rgb", subfolder="unet", revision=None)
+    rgb2x_unet=UNet2DConditionModel.from_pretrained("zheng95z/rgb-to-x", subfolder="unet", revision=None)
 
-    
-    unet = UNet2DConditionModel.from_pretrained(
-        "zheng95z/x-to-rgb", subfolder="unet", revision=None
-    )
-    rgb2x_unet=UNet2DConditionModel.from_pretrained(
-            "zheng95z/rgb-to-x", subfolder="unet", revision=None
-        )
-
-   
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
 
     unet.requires_grad_(False)
     unet.to(device)
     rgb2x_unet.requires_grad_(False)
     rgb2x_unet.to(device)
 
-    
     description = f"Training "
-  
-  
 
     # Optimizer creation
     model_input = photo_latents.detach().clone()
@@ -1946,7 +1865,7 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
 
     if traintext:
         text_lr=text_lr
-        description += f"Text,lr={text_lr}..."
+        description += f"prompt, lr={text_lr}"
         encoder_hidden_states.requires_grad = True
         text_optimizer = torch.optim.AdamW(
             [encoder_hidden_states],
@@ -1955,15 +1874,10 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
             # weight_decay=1e-2,
             eps=1e-08,
         )
-        
-    
-    
-    
+
     noise_init = torch.randn_like(model_input)
     noise= noise_init.detach().clone()
     rgb2x_noise=noise_init.detach().clone()
-
-    
 
     l1_loss = nn.L1Loss()
     step_size = 0.01
@@ -1980,51 +1894,29 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
                 print(aov_name)
                 aov_input = torch.randn_like(rgb2x_noise)
                 for i, t in enumerate(rgb2x_timesteps):
-                    scaled_aov_input = rgb2x_noise_scheduler.scale_model_input(
-                        aov_input, t
-                    )
-                    aov_concatenated_noisy_latents = torch.cat(
-                        [scaled_aov_input, model_input],
-                        dim=1,
-                    )
+                    scaled_aov_input = rgb2x_noise_scheduler.scale_model_input(aov_input, t)
+                    aov_concatenated_noisy_latents = torch.cat([scaled_aov_input, model_input], dim=1)
                     aov_pred = rgb2x_unet(aov_concatenated_noisy_latents, t, rgb2x_prompt_embeds[c].detach(), return_dict=False)[0]
                     aov_input = rgb2x_noise_scheduler.step(aov_pred, t, aov_input, return_dict=False)[0]
 
                 image_latents_aug[:, 4 * c:4 * c + 4] = aov_input
-    
+
     image_latents_text_aug = torch.cat([image_latents_aug[:, :-3], irradiance_text_latent], dim=1)
 
-
-    # Prompt optimization loop 
+    # Prompt optimization loop
     for _ in progress.tqdm(range(steps), desc=description):
-
-
-
-
-        loss=0
-        x0_preds=[]
-
-  
-
+        loss = 0
+        x0_preds = []
 
         # Sample a random timestep for each image
-        t = torch.randint(
-            0,
-            noise_scheduler.config.num_train_timesteps,
-            (1,),
-            device=noise.device,
-        )
+        t = torch.randint(0, noise_scheduler.config.num_train_timesteps, (1,), device=noise.device)
         t = t.long()
 
         # Add noise to the latents according to the noise magnitude at each timestep
         noise_=torch.randn_like(noise)
         noisy_model_input = noise_scheduler.add_noise(model_input, noise_, t)
 
-
-        concatenated_noisy_latents = torch.cat(
-            [noisy_model_input, image_latents],
-            dim=1,
-        )
+        concatenated_noisy_latents = torch.cat([noisy_model_input, image_latents], dim=1)
         model_pred = unet(concatenated_noisy_latents, t, encoder_hidden_states).sample
 
         # Get the image for loss depending on the prediction type
@@ -2033,18 +1925,13 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
         elif noise_scheduler.config.prediction_type == "v_prediction":
             target = noise_scheduler.get_velocity(model_input, noise_, t)
         else:
-            raise ValueError(
-                f"Unknown prediction type {noise_scheduler.config.prediction_type}"
-            )
+            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
         # Tuning loss in Eq. 6
-        loss+= F.mse_loss(model_pred.float(),target.float(),reduction="mean")*float(originweight)
+        loss += F.mse_loss(model_pred.float(),target.float(),reduction="mean")*float(originweight)
         # Transfer loss in Eq. 7
         if traintext:
-            concatenated_noisy_latents_text = torch.cat(
-                [noisy_model_input, image_latents_text_aug],
-                dim=1,
-            )
+            concatenated_noisy_latents_text = torch.cat([noisy_model_input, image_latents_text_aug], dim=1)
             # Input with null text embeddings+ all the aov channels
             model_pred_text = unet(concatenated_noisy_latents_text, t, encoder_hidden_states_init).sample
             loss += F.mse_loss(model_pred_text, model_pred, reduction="mean")*float(transferweight)
@@ -2056,4 +1943,3 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
             text_optimizer.zero_grad()
 
     return encoder_hidden_states
-

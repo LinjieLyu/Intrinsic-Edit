@@ -84,13 +84,6 @@ def create_intrinsicedit_demo():
         width = photo.shape[2]
 
         required_aovs = ["albedo", "normal", "roughness", "metallic", "irradiance"]
-        encoder_prompts = {
-            "albedo": "Albedo (diffuse basecolor)",
-            "normal": "Camera-space Normal",
-            "roughness": "Roughness",
-            "metallic": "Metallicness",
-            "irradiance": "Irradiance (diffuse lighting)",
-        }
 
         # Check if any of the given images are not None
         images = [photo, albedo_image, normal_image, roughness_image, metallic_image, irradiance_image]
@@ -306,7 +299,10 @@ def create_intrinsicedit_demo():
                 # Right main column, 50% wide
                 with gr.Column(scale=2, min_width=200):
                     gr.Markdown("## Outputs")
-                    result_gallery = gr.Gallery(label="Output", show_label=False, elem_id="gallery", columns=2)
+                    result_gallery = gr.Gallery(
+                        label="Output", show_label=False, elem_id="gallery",
+                        columns=2, height="auto", object_fit="contain"
+                    )
 
                     run_button = gr.Button()
 
@@ -315,10 +311,10 @@ def create_intrinsicedit_demo():
                     prompt = gr.Textbox(label="Prompt")
 
                     with gr.Accordion("Advanced options", open=False):
+                        num_samples = gr.Slider(label="Number of samples", minimum=1, maximum=100, step=1, value=1)
                         seed = gr.Slider(label="Seed", minimum=-1, maximum=2147483647, step=1, randomize=True)
                         inference_step = gr.Slider(label="Number of inference steps", minimum=1, maximum=1000, step=1, value=50)
                         optimization_step = gr.Slider(label="Number of optimization steps", minimum=1, maximum=1000, step=1, value=200)
-                        num_samples = gr.Slider(label="Number of samples", minimum=1, maximum=100, step=1, value=1)
                         guidance_scale = gr.Slider(label="Guidance scale", minimum=0.0, maximum=10.0, step=0.1, value=7.5)
                         image_guidance_scale = gr.Slider(label="Image guidance scale", minimum=0.0, maximum=10.0, step=0.1, value=1.5)
                         traintext = gr.Slider(label="traintext", minimum=0.0, maximum=1.0, step=1.0, value=1.0)
