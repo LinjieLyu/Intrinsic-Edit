@@ -1,4 +1,4 @@
-<h1 align="center"> IntrinsicEdit: Precise Generative Image Manipulation in Intrinsic Space </h1>
+<h1 align="center"> IntrinsicEdit: Precise generative image<br/>manipulation in intrinsic space</h1>
 
 <p align="center">ACM Transactions on Graphics (Proceedings of SIGGRAPH), 2025</p>
 

@@ -177,9 +177,7 @@ class StableDiffusionAOVPipelineOutput(BaseOutput):
     predicted_x0_images: Optional[Union[List[PIL.Image.Image], np.ndarray]] = None
 
 
-class StableDiffusionAOVDropoutPipeline_Inversion(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin
-):
+class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for AOVs.
 
@@ -642,114 +640,17 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         height: int,
         width: int,
         prompt: Union[str, List[str]] = None,
-        photo: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
-        albedo_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        normal_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        roughness_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        metallic_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        irradiance_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        albedo: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        normal: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        roughness: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        metallic: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        irradiance: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
+        photo: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]] = None,
+        albedo_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        normal_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        roughness_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        metallic_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        irradiance_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        albedo: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        normal: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        roughness: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        metallic: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        irradiance: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
         mask=None,
         guidance_scale: float = 0.0,
         image_guidance_scale: float = 0.0,
@@ -796,13 +697,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
         # 2. Encode input prompt
         prompt_embeds = self._encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance,
+            negative_prompt, prompt_embeds=prompt_embeds, negative_prompt_embeds=negative_prompt_embeds,
         )
 
         # 3. Preprocess image
@@ -814,39 +710,27 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         for aov_name in required_aovs:
             if aov_name == "albedo":
                 if albedo is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        albedo
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(albedo)
                 else:
                     preprocessed_aovs[aov_name] = None
-
             if aov_name == "normal":
                 if normal is not None:
-                    preprocessed_aovs[
-                        aov_name
-                    ] = self.image_processor.preprocess_normal(normal)
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess_normal(normal)
                 else:
                     preprocessed_aovs[aov_name] = None
-
             if aov_name == "roughness":
                 if roughness is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        roughness
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(roughness)
                 else:
                     preprocessed_aovs[aov_name] = None
             if aov_name == "metallic":
                 if metallic is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        metallic
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(metallic)
                 else:
                     preprocessed_aovs[aov_name] = None
             if aov_name == "irradiance":
                 if irradiance is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        irradiance
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(irradiance)
                 else:
                     preprocessed_aovs[aov_name] = None
 
@@ -865,12 +749,11 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
             do_denormalize = [True] * albedo_mask.shape[0]
 
-            generated_image = self.image_processor.postprocess(
-                albedo_mask, output_type='pil', do_denormalize=do_denormalize
-            )[0]
+            generated_image = self.image_processor.postprocess(albedo_mask, output_type='pil', do_denormalize=do_denormalize)[0]
 
         if irradiance_old is not None:
             preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)
+
         # 4. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -912,9 +795,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                     image_latent = image_latent[:, 0:3]
 
                 if do_classifier_free_guidance:
-                    image_latents.append(
-                        torch.cat([image_latent, image_latent, image_latent], dim=0)
-                    )
+                    image_latents.append(torch.cat([image_latent, image_latent, image_latent], dim=0))
                 else:
                     image_latents.append(image_latent)
             else:
@@ -960,13 +841,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             preprocessed_photo = self.image_processor.preprocess(photo)
 
         photo_latents = self.prepare_image_latents(
-            preprocessed_photo,
-            batch_size,
-            num_images_per_prompt,
-            prompt_embeds.dtype,
-            device,
-            False,
-            generator,
+            preprocessed_photo, batch_size, num_images_per_prompt,
+            prompt_embeds.dtype, device, False, generator,
         )
         photo_latents = photo_latents * self.vae.config.scaling_factor
 
@@ -994,33 +870,18 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
                 # is applied for both the text and the input image.
-                latent_model_input = (
-                    torch.cat([latents] * 3) if do_classifier_free_guidance else latents
-                )
+                latent_model_input = (torch.cat([latents] * 3) if do_classifier_free_guidance else latents)
 
                 # concat latents, image_latents in the channel dimension
-                scaled_latent_model_input = self.scheduler.scale_model_input(
-                    latent_model_input, t
-                )
-                scaled_latent_model_input = torch.cat(
-                    [scaled_latent_model_input, image_latents], dim=1
-                )
+                scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
 
                 # predict the noise residual
-                noise_pred = self.unet(
-                    scaled_latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    return_dict=False,
-                )[0]
+                noise_pred = self.unet( scaled_latent_model_input, t, encoder_hidden_states=prompt_embeds, return_dict=False)[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    (
-                        noise_pred_text,
-                        noise_pred_image,
-                        noise_pred_uncond,
-                    ) = noise_pred.chunk(3)
+                    noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
                     noise_pred = (
                         noise_pred_uncond
                         + guidance_scale * (noise_pred_text - noise_pred_image)
@@ -1029,9 +890,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(
-                        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
-                    )
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
 
@@ -1049,23 +908,17 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
                 latents=latents_prev
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or (
-                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False
-            )[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
 
             if return_predicted_x0s:
                 predicted_x0_images = [
-                    self.vae.decode(
-                        predicted_x0 / self.vae.config.scaling_factor, return_dict=False
-                    )[0]
+                    self.vae.decode(predicted_x0 / self.vae.config.scaling_factor, return_dict=False)[0]
                     for predicted_x0 in predicted_x0s
                 ]
         else:
@@ -1074,17 +927,11 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
         do_denormalize = [True] * image.shape[0]
 
-        image = self.image_processor.postprocess(
-            image, output_type=output_type, do_denormalize=do_denormalize
-        )
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         if return_predicted_x0s:
             predicted_x0_images = [
-                self.image_processor.postprocess(
-                    predicted_x0_image,
-                    output_type=output_type,
-                    do_denormalize=do_denormalize,
-                )
+                self.image_processor.postprocess(predicted_x0_image, output_type=output_type, do_denormalize=do_denormalize)
                 for predicted_x0_image in predicted_x0_images
             ]
 
@@ -1096,9 +943,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
             return image
 
         if return_predicted_x0s:
-            return StableDiffusionAOVPipelineOutput(
-                images=image, predicted_x0_images=predicted_x0_images
-            )
+            return StableDiffusionAOVPipelineOutput(images=image, predicted_x0_images=predicted_x0_images)
         else:
             return StableDiffusionAOVPipelineOutput(images=image)
 
@@ -1109,124 +954,18 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         height: int,
         width: int,
         prompt: Union[str, List[str]] = None,
-        photo: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
-        albedo_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        normal_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        roughness_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        metallic_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        irradiance_old: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        irradiance_text: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        albedo: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        normal: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        roughness: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        metallic: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
-        irradiance: Optional[
-            Union[
-                torch.FloatTensor,
-                PIL.Image.Image,
-                np.ndarray,
-                List[torch.FloatTensor],
-                List[PIL.Image.Image],
-                List[np.ndarray],
-            ]
-        ] = None,
+        photo: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]] = None,
+        albedo_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        normal_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        roughness_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        metallic_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        irradiance_old: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        irradiance_text: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        albedo: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        normal: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        roughness: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        metallic: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
+        irradiance: Optional[Union[torch.FloatTensor, PIL.Image.Image, np.ndarray, List[torch.FloatTensor], List[PIL.Image.Image], List[np.ndarray]]] = None,
         mask=None,
         guidance_scale: float = 0.0,
         image_guidance_scale: float = 0.0,
@@ -1257,13 +996,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         text_lr=1e-1,
     ):
         # 0. Check inputs
-        self.check_inputs(
-            prompt,
-            callback_steps,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
-        )
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 1. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1295,45 +1028,34 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         # For normal, the preprocessing does nothing
         # For others, the preprocessing remap the values to [-1, 1]
 
-
         preprocessed_aovs = {}
         preprocessed_aovs_old={aov_name: None for aov_name in required_aovs}
         for aov_name in required_aovs:
             if aov_name == "albedo":
                 if albedo is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        albedo
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(albedo)
                 else:
                     preprocessed_aovs[aov_name] = None
 
             if aov_name == "normal":
                 if normal is not None:
-                    preprocessed_aovs[
-                        aov_name
-                    ] = self.image_processor.preprocess_normal(normal)
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess_normal(normal)
                 else:
                     preprocessed_aovs[aov_name] = None
 
             if aov_name == "roughness":
                 if roughness is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        roughness
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(roughness)
                 else:
                     preprocessed_aovs[aov_name] = None
             if aov_name == "metallic":
                 if metallic is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        metallic
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(metallic)
                 else:
                     preprocessed_aovs[aov_name] = None
             if aov_name == "irradiance":
                 if irradiance is not None:
-                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(
-                        irradiance
-                    )
+                    preprocessed_aovs[aov_name] = self.image_processor.preprocess(irradiance)
                 else:
                     preprocessed_aovs[aov_name] = None
 
@@ -1352,9 +1074,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
 
             do_denormalize = [True] * albedo_mask.shape[0]
 
-            generated_image = self.image_processor.postprocess(
-            albedo_mask, output_type='pil', do_denormalize=do_denormalize
-            )[0]
+            generated_image = self.image_processor.postprocess(albedo_mask, output_type='pil', do_denormalize=do_denormalize)[0]
 
         if irradiance_old is not None:
             preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)
@@ -1381,13 +1101,8 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
         if photo is not None:
             preprocessed_photo = self.image_processor.preprocess(photo)
         photo_latents = self.prepare_image_latents(
-            preprocessed_photo,
-            batch_size,
-            num_images_per_prompt,
-            prompt_embeds.dtype,
-            device,
-            False,
-            generator,
+            preprocessed_photo, batch_size, num_images_per_prompt,
+            prompt_embeds.dtype,device, False, generator,
         )
         photo_latents = photo_latents * self.vae.config.scaling_factor
         height_latent, width_latent = photo_latents.shape[-2:]
@@ -1422,9 +1137,7 @@ class StableDiffusionAOVDropoutPipeline_Inversion(
                 if aov_name == "irradiance":
                     image_latent = image_latent[:, 0:3]
                 if do_classifier_free_guidance:
-                    image_latents.append(
-                        torch.cat([image_latent, image_latent, image_latent], dim=0)
-                    )
+                    image_latents.append(torch.cat([image_latent, image_latent, image_latent], dim=0))
                 else:
                     image_latents.append(image_latent)
             else:

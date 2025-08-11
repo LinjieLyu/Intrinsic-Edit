@@ -1,119 +1,85 @@
-import argparse
-import os
-import sys
-import safetensors
-
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 import cv2
-from PIL import Image
-
 import numpy as np
 import torch
-import torch.nn.functional as F
-from torch import autocast, inference_mode
-import torchvision.transforms as transforms
-import torchvision
-
-import uvicorn
-from diffusers import DDIMScheduler, DDPMScheduler, UNet2DConditionModel,DPMSolverMultistepScheduler
-
+from torchvision.transforms import CenterCrop
+from diffusers import DPMSolverMultistepScheduler
 import gradio as gr
-from fastapi import FastAPI
+from pipeline import IntrinsicEditPipeline
 
-# Local imports
-from dataset import load_exr_image, load_ldr_image
-from pipeline import StableDiffusionAOVDropoutPipeline_Inversion
+
+def load_ldr_image(image_path, from_srgb=False, clamp=False, normalize=False):
+    # Load png or jpg image
+    image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+    image = torch.from_numpy(image.astype(np.float32) / 255.0)  # (h, w, c)
+    image[~torch.isfinite(image)] = 0
+    if from_srgb:
+        # Convert from sRGB to linear RGB
+        image = image**2.2
+    if clamp:
+        image = torch.clamp(image, min=0.0, max=1.0)
+    if normalize:
+        # Normalize to [-1, 1]
+        image = image * 2.0 - 1.0
+        image = torch.nn.functional.normalize(image, dim=-1, eps=1e-6)
+    return image.permute(2, 0, 1)  # returns (c, h, w)
+
+
+def load_image(file, width=None, height=None, clamp=False, normalize=False, tonemaping=False, from_srgb=False):
+    image = None
+    if file is not None:
+        file_path = file if isinstance(file, str) else file.name
+        # if file_path.endswith(".exr"):
+        #     image = load_exr_image(file_path, clamp=clamp, normalize=normalize, tonemaping=tonemaping).to("cuda")
+        if file_path.endswith((".png", ".jpg", ".jpeg")):
+            image = load_ldr_image(file_path, from_srgb=from_srgb, clamp=clamp, normalize=normalize).to("cuda")
+        if image is not None and width is not None and height is not None:
+            image = CenterCrop((height, width))(image)
+    return image
 
 
 def create_intrinsicedit_demo():
     # Load pipeline
-    pipe = StableDiffusionAOVDropoutPipeline_Inversion.from_pretrained("zheng95z/x-to-rgb", torch_dtype=torch.float32).to("cuda")
-    pipe.scheduler = DPMSolverMultistepScheduler.from_config(
-        pipe.scheduler.config,
+    pipeline = IntrinsicEditPipeline.from_pretrained("zheng95z/x-to-rgb", torch_dtype=torch.float32).to("cuda")
+    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+        pipeline.scheduler.config,
         rescale_betas_zero_snr=True,
         solver_order=1,
         steps_offset=1,
         algorithm_type='dpmsolver++',
         prediction_type='v_prediction')
-    pipe.to("cuda")
+    pipeline.to("cuda")
 
-    def callback(
-        photo, albedo, albedo_new, normal, normal_new, roughness, roughness_new, metallic, metallic_new,
-        irradiance, irradiance_new, irradiance_text, mask, prompt, seed, inference_step, optimization_step,
+    def run_pipeline(
+        image, albedo, albedo_edited, normal, normal_edited, roughness, roughness_edited, metallic, metallic_edited,
+        irradiance, irradiance_edited, irradiance_text, prompt, seed, inference_step, optimization_step,
         num_samples, guidance_scale, image_guidance_scale, traintext, saveprompt, loadprompt, loadnoise,
         skipinverse, augtext, decoderinv, transferweight, originweight, text_lr,
     ):
         # Set the number of inference steps
-        pipe.scheduler.set_timesteps(inference_step)
+        pipeline.scheduler.set_timesteps(inference_step)
 
-        def process_image(file_obj, clamp=False, normalize=False, tonemaping=False, from_srgb=False):
-            if file_obj is None:
-                return None
-            if isinstance(file_obj, str):
-                name = file_obj
-            else:
-                name = file_obj.name
-            # print(f"Processing image: {name}", flush=True)
-            if name.endswith(".exr"):
-                return load_exr_image(name, clamp=clamp, normalize=normalize, tonemaping=tonemaping).to("cuda")
-            elif name.endswith((".png", ".jpg", ".jpeg")):
-                return load_ldr_image(name, from_srgb=from_srgb, clamp=clamp, normalize=normalize).to("cuda")
-            return None
+        image_temp = load_image(image, clamp=True, tonemaping=True, from_srgb=True)
+        height = image_temp.shape[1] // 8 * 8
+        width = image_temp.shape[2] // 8 * 8
 
-        # Load condition images
-        albedo_image = process_image(albedo, clamp=True, from_srgb=True)
-        albedo_new_image = process_image(albedo_new, clamp=True, from_srgb=True)
-        normal_image = process_image(normal, normalize=True)
-        normal_new_image = process_image(normal_new, normalize=True)
-        roughness_image = process_image(roughness, clamp=True)
-        roughness_new_image = process_image(roughness_new, clamp=True)
-        metallic_image = process_image(metallic, clamp=True)
-        metallic_new_image = process_image(metallic_new, clamp=True)
-        irradiance_image = process_image(irradiance, clamp=True, tonemaping=True, from_srgb=True)
-        irradiance_new_image = process_image(irradiance_new, clamp=True, tonemaping=True, from_srgb=True)
-        irradiance_text_image = process_image(irradiance_text, clamp=True, tonemaping=True, from_srgb=True)
-
-        # Load input image, crop if width and height are not multiples of 8
-        photo = process_image(photo, clamp=True, tonemaping=True, from_srgb=True)
-        if photo.shape[1] % 8 != 0 or photo.shape[2] % 8 != 0:
-            photo = torchvision.transforms.CenterCrop(
-                (photo.shape[1] // 8 * 8, photo.shape[2] // 8 * 8)
-            )(photo)
-
-        height = photo.shape[1]
-        width = photo.shape[2]
+        # Load input images, ensuring have the same dimensions that are also multiple of 8
+        image = load_image(image, width=width, height=height, clamp=True, tonemaping=True, from_srgb=True)
+        albedo = load_image(albedo, width=width, height=height, clamp=True, from_srgb=True)
+        albedo_edited = load_image(albedo_edited, width=width, height=height, clamp=True, from_srgb=True)
+        normal = load_image(normal, width=width, height=height, normalize=True)
+        normal_edited = load_image(normal_edited, width=width, height=height, normalize=True)
+        roughness = load_image(roughness, width=width, height=height, clamp=True)
+        roughness_edited = load_image(roughness_edited, width=width, height=height, clamp=True)
+        metallic = load_image(metallic, width=width, height=height, clamp=True)
+        metallic_edited = load_image(metallic_edited, width=width, height=height, clamp=True)
+        irradiance = load_image(irradiance, width=width, height=height, clamp=True, tonemaping=True, from_srgb=True)
+        irradiance_edited = load_image(irradiance_edited, width=width, height=height, clamp=True, tonemaping=True, from_srgb=True)
+        irradiance_text = load_image(irradiance_text, width=width, height=height, clamp=True, tonemaping=True, from_srgb=True)
 
         required_aovs = ["albedo", "normal", "roughness", "metallic", "irradiance"]
-
-        # Check if any of the given images are not None
-        images = [photo, albedo_image, normal_image, roughness_image, metallic_image, irradiance_image]
-        for img in images:
-            if img is not None:
-                height = img.shape[1]
-                width = img.shape[2]
-                break
-
-        # required_aovs = ["albedo", "normal", "roughness", "metallic", "irradiance"]
         return_list = []
-
-        generator = torch.Generator(device="cuda").manual_seed(seed)
-
-        mask = torch.zeros_like(photo)
-
-        recon_aovs = {
-            'albedo': albedo_new_image,
-            'normal': normal_new_image,
-            'roughness': roughness_new_image,
-            'metallic': metallic_new_image,
-            'irradiance': irradiance_new_image
-        }
-        old_aovs = {
-            'albedo': albedo_image,
-            'normal': normal_image,
-            'roughness': roughness_image,
-            'metallic': metallic_image,
-            'irradiance': irradiance_image
-        }
+        rng = torch.Generator(device="cuda").manual_seed(seed)
+        mask = torch.zeros_like(image)
 
         for i in range(num_samples):
             # Clean memory
@@ -122,26 +88,26 @@ def create_intrinsicedit_demo():
 
             # Prompt optimization and noise inversion
             if not skipinverse:
-                xT,prompt_embeds = pipe.forward_diffusion(
+                xT, prompt_embeds = pipeline.forward_diffusion(
                     mask=mask,
                     prompt=prompt,
-                    photo=photo,
-                    albedo=albedo_image,
-                    albedo_old=albedo_image,
-                    normal=normal_image,
-                    normal_old=normal_image,
-                    roughness=roughness_image,
-                    roughness_old=roughness_image,
-                    metallic=metallic_image,
-                    metallic_old=metallic_image,
-                    irradiance=irradiance_image,
-                    irradiance_old=irradiance_image,
-                    irradiance_text=irradiance_text_image,
+                    photo=image,
+                    albedo=albedo,
+                    albedo_old=albedo,
+                    normal=normal,
+                    normal_old=normal,
+                    roughness=roughness,
+                    roughness_old=roughness,
+                    metallic=metallic,
+                    metallic_old=metallic,
+                    irradiance=irradiance,
+                    irradiance_old=irradiance,
+                    irradiance_text=irradiance_text,
                     num_inference_steps=inference_step,
                     num_optimization_steps=optimization_step,
                     height=height,
                     width=width,
-                    generator=generator,
+                    generator=rng,
                     required_aovs=required_aovs,
                     # guidance_scale=guidance_scale,
                     # image_guidance_scale=image_guidance_scale,
@@ -156,7 +122,7 @@ def create_intrinsicedit_demo():
                     text_lr=float(text_lr),
                 )
                 if saveprompt:
-                    torch.save([xT,prompt_embeds], f"./output/optimized_albedo_latents.pt")
+                    torch.save([xT, prompt_embeds], f"./output/optimized_albedo_latents.pt")
 
             if loadprompt:
                 prompt_embeds = torch.load(f"./output/optimized_albedo_latents.pt")[1]
@@ -164,25 +130,25 @@ def create_intrinsicedit_demo():
                 xT = torch.load(f"./output/optimized_albedo_latents.pt")[0]
 
             # Input reconstruction
-            generated_image = pipe(
+            generated_image = pipeline(
                 mask=mask,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=prompt_embeds,
-                photo=photo,
-                albedo=albedo_image,
-                albedo_old=albedo_image,
-                normal=normal_image,
-                normal_old=normal_image,
-                roughness=roughness_image,
-                roughness_old=roughness_image,
-                metallic=metallic_image,
-                metallic_old=metallic_image,
-                irradiance=irradiance_image,
-                irradiance_old=irradiance_image,
+                photo=image,
+                albedo=albedo,
+                albedo_old=albedo,
+                normal=normal,
+                normal_old=normal,
+                roughness=roughness,
+                roughness_old=roughness,
+                metallic=metallic,
+                metallic_old=metallic,
+                irradiance=irradiance,
+                irradiance_old=irradiance,
                 num_inference_steps=inference_step,
                 height=height,
                 width=width,
-                generator=generator,
+                generator=rng,
                 latents=xT,
                 required_aovs=required_aovs,
                 guidance_scale=guidance_scale,
@@ -198,25 +164,25 @@ def create_intrinsicedit_demo():
                 return_list.append((generated_image, f"Input reconstruction"))
 
             # Edited result
-            generated_image = pipe(
+            generated_image = pipeline(
                 mask=mask,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=prompt_embeds,
-                photo=photo,
-                albedo=recon_aovs['albedo'],
-                albedo_old=old_aovs['albedo'],
-                normal=recon_aovs['normal'],
-                normal_old=old_aovs['normal'],
-                roughness=recon_aovs['roughness'],
-                roughness_old=old_aovs['roughness'],
-                metallic=recon_aovs['metallic'],
-                metallic_old=old_aovs['metallic'],
-                irradiance=recon_aovs['irradiance'],
-                irradiance_old=old_aovs['irradiance'],
+                photo=image,
+                albedo=albedo_edited,
+                albedo_old=albedo,
+                normal=normal_edited,
+                normal_old=normal,
+                roughness=roughness_edited,
+                roughness_old=roughness,
+                metallic=metallic_edited,
+                metallic_old=metallic,
+                irradiance=irradiance_edited,
+                irradiance_old=irradiance,
                 num_inference_steps=inference_step,
                 height=height,
                 width=width,
-                generator=generator,
+                generator=rng,
                 latents=xT,
                 required_aovs=required_aovs,
                 guidance_scale=guidance_scale,
@@ -328,15 +294,14 @@ def create_intrinsicedit_demo():
                         originweight = gr.Slider(label="originweight", minimum=-1.0, maximum=1000.0, step=0.1, value=10.0)
                         text_lr = gr.Slider(label="text_lr", minimum=0.0, maximum=1.0, step=0.01, value=0.1)
 
-            mask = albedo
             inputs = [
                 image, albedo, albedo_edited, normal, normal_edited, roughness, roughness_edited,
-                metallic, metallic_edited, irradiance, irradiance_edited, irradiance_text, mask, prompt,
+                metallic, metallic_edited, irradiance, irradiance_edited, irradiance_text, prompt,
                 seed, inference_step, optimization_step, num_samples, guidance_scale, image_guidance_scale,
                 traintext, saveprompt, loadprompt, loadnoise, skipinverse, augtext, decoderinv,
                 transferweight, originweight, text_lr,
             ]
-            run_button.click(fn=callback, inputs=inputs, outputs=result_gallery, queue=True)
+            run_button.click(fn=run_pipeline, inputs=inputs, outputs=result_gallery, queue=True)
 
         return block
 
