@@ -1,73 +1,33 @@
 import inspect
-import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import math
+import tqdm
 import numpy as np
 import PIL
+
 import torch
 import torch.nn.functional as F
-from diffusers.configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import (
-    FromSingleFileMixin,
-    LoraLoaderMixin,
-    TextualInversionLoaderMixin,
-)
-from diffusers.models import AutoencoderKL, UNet2DConditionModel,AutoencoderTiny,VQModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
-    rescale_noise_cfg,
-)
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import (
-    CONFIG_NAME,
-    BaseOutput,
-    deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    logging,
+from torch import nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau,LambdaLR
 
-    replace_example_docstring,
-)
+from diffusers.configuration_utils import register_to_config
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import CONFIG_NAME, BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import randn_tensor
-from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
-from torch import autocast, inference_mode
 logger = logging.get_logger(__name__)
 
-import os
-import safetensors
-from torch import nn
-from torchvision.transforms import GaussianBlur
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, UNet2DConditionModel
 
 from accelerate import Accelerator
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    DDIMScheduler,
-    DiffusionPipeline,
-    DPMSolverMultistepScheduler,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
-)
-from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    LoRAAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    SlicedAttnAddedKVProcessor,
-)
-from diffusers.optimization import get_scheduler
-import tqdm
 from accelerate.utils import set_seed
-from transformers import AutoConfig
-
-from torch.optim.lr_scheduler import ReduceLROnPlateau,LambdaLR
-import math
 
 
 class VaeImageProcrssorAOV(VaeImageProcessor):
@@ -672,13 +632,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         traintext=False,
     ):
         # 0. Check inputs
-        self.check_inputs(
-            prompt,
-            callback_steps,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
-        )
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 1. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -689,11 +643,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        do_classifier_free_guidance = (
-            guidance_scale >= 1.0 and image_guidance_scale >= 1.0
-        )
-        # check if scheduler is in sigmas space
-        scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
+        do_classifier_free_guidance = (guidance_scale >= 1.0 and image_guidance_scale >= 1.0)
 
         # 2. Encode input prompt
         prompt_embeds = self._encode_prompt(
@@ -754,7 +704,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         if irradiance_old is not None:
             preprocessed_aovs_old["irradiance"] = self.image_processor.preprocess(irradiance_old)
 
-        # 4. set timesteps
+        # 4. Set times teps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
@@ -988,6 +938,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         use_old_emb_i=25,
         inverse_opt=True,
         inv_order=None,
+        rgb2x_steps=2,
         traintext=False,
         augtext=True,
         decoderinv=False,
@@ -1007,11 +958,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        do_classifier_free_guidance = (
-            guidance_scale >= 1.0 and image_guidance_scale >= 1.0
-        )
-        # check if scheduler is in sigmas space
-        scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
+        do_classifier_free_guidance = (guidance_scale >= 1.0 and image_guidance_scale >= 1.0)
 
         # 2. Encode input prompt
         prompt_embeds = self._encode_prompt(
@@ -1236,10 +1183,12 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         ).detach())
 
 
-        #### prompt optimization
+        # Prompt optimization
         if traintext:
-            prompt_embeds=train_text(latents, image_latents,irradiance_text_latent,prompt_embeds_nocfg,rgb2x_prompt_embeds,preprocessed_aovs,unet=self.unet
-                ,augtext=augtext,transferweight=transferweight,originweight=originweight,traintext=traintext, text_lr=text_lr, steps=num_optimization_steps)
+            prompt_embeds = train_text(
+                latents, image_latents, irradiance_text_latent, prompt_embeds_nocfg, rgb2x_prompt_embeds, preprocessed_aovs,
+                x2rgb_unet=self.unet, augtext=augtext, transferweight=transferweight, originweight=originweight, traintext=traintext,
+                text_lr=text_lr, steps=num_optimization_steps, rgb2x_steps=rgb2x_steps)
 
         self.unet.requires_grad_(False)
 
@@ -1530,11 +1479,11 @@ class StepScheduler(ReduceLROnPlateau):
                         ' to {:.4e}.'.format(epoch_str,new_lr))
 
 
-
-
-def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidden_states,rgb2x_prompt_embeds,preprocessed_aovs,
-               unet=None, noise_scheduler=None, augtext=True,transferweight=1.0,originweight=1.0,steps=200, text_lr=1e-1, progress=tqdm,traintext=False):
-    # initialize accelerator
+def train_text(
+        photo_latents, image_latents, irradiance_text_latent, encoder_hidden_states,
+        rgb2x_prompt_embeds, preprocessed_aovs, x2rgb_unet=None, x2rgb_scheduler=None, augtext=True,
+        transferweight=1.0, originweight=1.0, steps=200, text_lr=1e-1, progress=tqdm, traintext=False, rgb2x_steps=2):
+    # Initialize accelerator
     accelerator = Accelerator(
         gradient_accumulation_steps=1,
         # mixed_precision='fp16'
@@ -1542,24 +1491,24 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
     set_seed(0)
 
     # initialize the model
-    if noise_scheduler is None:
-        noise_scheduler = DDIMScheduler.from_pretrained("zheng95z/x-to-rgb", subfolder="scheduler")
-        noise_scheduler = DDIMScheduler.from_config(noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
-        noise_scheduler.set_timesteps(2)
-        rgb2x_noise_scheduler = DDIMScheduler.from_pretrained("zheng95z/rgb-to-x", subfolder="scheduler")
-        rgb2x_noise_scheduler = DDIMScheduler.from_config(rgb2x_noise_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
-        rgb2x_noise_scheduler.set_timesteps(2)
+    if x2rgb_scheduler is None:
+        x2rgb_scheduler = DDIMScheduler.from_pretrained("zheng95z/x-to-rgb", subfolder="scheduler")
+        x2rgb_scheduler = DDIMScheduler.from_config(x2rgb_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
+        x2rgb_scheduler.set_timesteps(2)
+        rgb2x_scheduler = DDIMScheduler.from_pretrained("zheng95z/rgb-to-x", subfolder="scheduler")
+        rgb2x_scheduler = DDIMScheduler.from_config(rgb2x_scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing")
+        rgb2x_scheduler.set_timesteps(rgb2x_steps)
 
-    timesteps = noise_scheduler.timesteps
-    rgb2x_timesteps = rgb2x_noise_scheduler.timesteps
+    timesteps = x2rgb_scheduler.timesteps
+    rgb2x_timesteps = rgb2x_scheduler.timesteps
 
-    unet = UNet2DConditionModel.from_pretrained("zheng95z/x-to-rgb", subfolder="unet", revision=None)
+    x2rgb_unet = UNet2DConditionModel.from_pretrained("zheng95z/x-to-rgb", subfolder="unet", revision=None)
     rgb2x_unet=UNet2DConditionModel.from_pretrained("zheng95z/rgb-to-x", subfolder="unet", revision=None)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    unet.requires_grad_(False)
-    unet.to(device)
+    x2rgb_unet.requires_grad_(False)
+    x2rgb_unet.to(device)
     rgb2x_unet.requires_grad_(False)
     rgb2x_unet.to(device)
 
@@ -1568,16 +1517,15 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
     # Optimizer creation
     model_input = photo_latents.detach().clone()
     bsz, channels, height, width = model_input.shape
-    # if image_latents.shape[0] != photo_latents.shape[0]:
     cond_image_latents = image_latents[:1].detach().clone()
     uncond_image_latents = image_latents[-1:].detach().clone()
 
-    image_latents=cond_image_latents
+    image_latents = cond_image_latents
     encoder_hidden_states = encoder_hidden_states.detach().clone()
     encoder_hidden_states_init = encoder_hidden_states.detach().clone()
 
     if traintext:
-        text_lr=text_lr
+        text_lr = text_lr
         description += f"prompt, lr={text_lr}"
         encoder_hidden_states.requires_grad = True
         text_optimizer = torch.optim.AdamW(
@@ -1589,32 +1537,34 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
         )
 
     noise_init = torch.randn_like(model_input)
-    noise= noise_init.detach().clone()
-    rgb2x_noise=noise_init.detach().clone()
+    noise = noise_init.detach().clone()
+    rgb2x_noise = noise_init.detach().clone()
 
     l1_loss = nn.L1Loss()
     step_size = 0.01
     step_scheduler = StepScheduler(current_lr=step_size, factor=0.5, patience=20)
 
     required_aovs = ["albedo", "normal", "roughness", "metallic"]
+    num_raovs = len(required_aovs)
     image_latents_aug = image_latents.detach().clone()
 
-    # If the AOVs are not provided, we will estimate them
+    # Estimate any channels that are not already provided
     if augtext:
-        for c in range(4):
+        for c in range(num_raovs):
             aov_name = required_aovs[c]
             if preprocessed_aovs[aov_name] is None:
                 print(aov_name)
                 aov_input = torch.randn_like(rgb2x_noise)
                 for i, t in enumerate(rgb2x_timesteps):
-                    scaled_aov_input = rgb2x_noise_scheduler.scale_model_input(aov_input, t)
+                    scaled_aov_input = rgb2x_scheduler.scale_model_input(aov_input, t)
                     aov_concatenated_noisy_latents = torch.cat([scaled_aov_input, model_input], dim=1)
                     aov_pred = rgb2x_unet(aov_concatenated_noisy_latents, t, rgb2x_prompt_embeds[c].detach(), return_dict=False)[0]
-                    aov_input = rgb2x_noise_scheduler.step(aov_pred, t, aov_input, return_dict=False)[0]
+                    aov_input = rgb2x_scheduler.step(aov_pred, t, aov_input, return_dict=False)[0]
+                image_latents_aug[:, num_raovs * c : num_raovs * c + num_raovs] = aov_input
 
-                image_latents_aug[:, 4 * c:4 * c + 4] = aov_input
-
-    image_latents_text_aug = torch.cat([image_latents_aug[:, :-3], irradiance_text_latent], dim=1)
+    image_latents_text_aug = image_latents_aug
+    if irradiance_text_latent is not None:
+        image_latents_text_aug = torch.cat([image_latents_text_aug[:, :-3], irradiance_text_latent], dim=1)
 
     # Prompt optimization loop
     for _ in progress.tqdm(range(steps), desc=description):
@@ -1622,23 +1572,23 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
         x0_preds = []
 
         # Sample a random timestep for each image
-        t = torch.randint(0, noise_scheduler.config.num_train_timesteps, (1,), device=noise.device)
+        t = torch.randint(0, x2rgb_scheduler.config.num_train_timesteps, (1,), device=noise.device)
         t = t.long()
 
         # Add noise to the latents according to the noise magnitude at each timestep
         noise_=torch.randn_like(noise)
-        noisy_model_input = noise_scheduler.add_noise(model_input, noise_, t)
+        noisy_model_input = x2rgb_scheduler.add_noise(model_input, noise_, t)
 
         concatenated_noisy_latents = torch.cat([noisy_model_input, image_latents], dim=1)
-        model_pred = unet(concatenated_noisy_latents, t, encoder_hidden_states).sample
+        model_pred = x2rgb_unet(concatenated_noisy_latents, t, encoder_hidden_states).sample
 
         # Get the image for loss depending on the prediction type
-        if noise_scheduler.config.prediction_type == "epsilon":
+        if x2rgb_scheduler.config.prediction_type == "epsilon":
             target = noise
-        elif noise_scheduler.config.prediction_type == "v_prediction":
-            target = noise_scheduler.get_velocity(model_input, noise_, t)
+        elif x2rgb_scheduler.config.prediction_type == "v_prediction":
+            target = x2rgb_scheduler.get_velocity(model_input, noise_, t)
         else:
-            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            raise ValueError(f"Unknown prediction type {x2rgb_scheduler.config.prediction_type}")
 
         # Tuning loss in Eq. 6
         loss += F.mse_loss(model_pred.float(),target.float(),reduction="mean")*float(originweight)
@@ -1646,7 +1596,7 @@ def train_text(photo_latents, image_latents,irradiance_text_latent, encoder_hidd
         if traintext:
             concatenated_noisy_latents_text = torch.cat([noisy_model_input, image_latents_text_aug], dim=1)
             # Input with null text embeddings+ all the aov channels
-            model_pred_text = unet(concatenated_noisy_latents_text, t, encoder_hidden_states_init).sample
+            model_pred_text = x2rgb_unet(concatenated_noisy_latents_text, t, encoder_hidden_states_init).sample
             loss += F.mse_loss(model_pred_text, model_pred, reduction="mean")*float(transferweight)
 
         accelerator.backward(loss)

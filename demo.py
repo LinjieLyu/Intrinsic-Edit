@@ -52,7 +52,7 @@ def create_intrinsicedit_demo():
     def run_pipeline(
         image, albedo, albedo_edited, normal, normal_edited, roughness, roughness_edited, metallic, metallic_edited,
         irradiance, irradiance_edited, irradiance_text, prompt, seed, inference_step, optimization_step,
-        num_samples, guidance_scale, image_guidance_scale, traintext, saveprompt, loadprompt, loadnoise,
+        num_samples, guidance_scale, image_guidance_scale, rgb2x_steps, traintext, saveprompt, loadprompt, loadnoise,
         skipinverse, augtext, decoderinv, transferweight, originweight, text_lr,
     ):
         # Set the number of inference steps
@@ -113,7 +113,8 @@ def create_intrinsicedit_demo():
                     # image_guidance_scale=image_guidance_scale,
                     guidance_rescale=0.7,
                     inverse_opt=True,
-                    inv_order=1 ,
+                    inv_order=1,
+                    rgb2x_steps=rgb2x_steps,
                     traintext=traintext,
                     augtext=augtext,
                     decoderinv=decoderinv,
@@ -200,7 +201,7 @@ def create_intrinsicedit_demo():
         return return_list
 
     def create_ui():
-        block = gr.Blocks()
+        block = gr.Blocks(theme=gr.themes.Default())
         with block:
             with gr.Row():
                 gr.Markdown("# IntrinsicEdit demo")
@@ -272,33 +273,34 @@ def create_intrinsicedit_demo():
 
                     run_button = gr.Button()
 
-                    gr.Markdown("## Other parameters")
+                    # gr.Markdown("## Other parameters")
 
-                    prompt = gr.Textbox(label="Prompt")
-
-                    with gr.Accordion("Advanced options", open=False):
+                    with gr.Accordion("Options", open=False):
+                        prompt = gr.Textbox(label="Prompt")
                         num_samples = gr.Slider(label="Number of samples", minimum=1, maximum=100, step=1, value=1)
                         seed = gr.Slider(label="Seed", minimum=-1, maximum=2147483647, step=1, randomize=True)
                         inference_step = gr.Slider(label="Number of inference steps", minimum=1, maximum=1000, step=1, value=50)
                         optimization_step = gr.Slider(label="Number of optimization steps", minimum=1, maximum=1000, step=1, value=200)
                         guidance_scale = gr.Slider(label="Guidance scale", minimum=0.0, maximum=10.0, step=0.1, value=7.5)
                         image_guidance_scale = gr.Slider(label="Image guidance scale", minimum=0.0, maximum=10.0, step=0.1, value=1.5)
-                        traintext = gr.Slider(label="traintext", minimum=0.0, maximum=1.0, step=1.0, value=1.0)
-                        saveprompt = gr.Slider(label="saveprompt", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
-                        loadprompt = gr.Slider(label="loadprompt", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
-                        loadnoise = gr.Slider(label="loadnoise", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
-                        skipinverse = gr.Slider(label="skipinverse", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
-                        augtext = gr.Slider(label="augtext", minimum=0.0, maximum=1.0, step=1.0, value=1.0)
-                        decoderinv = gr.Slider(label="decoderinv", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
-                        transferweight = gr.Slider(label="transferweight", minimum=-1.0, maximum=100.0, step=0.1, value=1.0)
-                        originweight = gr.Slider(label="originweight", minimum=-1.0, maximum=1000.0, step=0.1, value=10.0)
-                        text_lr = gr.Slider(label="text_lr", minimum=0.0, maximum=1.0, step=0.01, value=0.1)
+                        with gr.Accordion("Advanced", open=False):
+                            rgb2x_steps = gr.Slider(label="RGB→X inference steps", minimum=1, maximum=1000, step=1, value=2)
+                            traintext = gr.Slider(label="traintext", minimum=0.0, maximum=1.0, step=1.0, value=1.0)
+                            saveprompt = gr.Slider(label="saveprompt", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
+                            loadprompt = gr.Slider(label="loadprompt", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
+                            loadnoise = gr.Slider(label="loadnoise", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
+                            skipinverse = gr.Slider(label="skipinverse", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
+                            augtext = gr.Slider(label="augtext", minimum=0.0, maximum=1.0, step=1.0, value=1.0)
+                            decoderinv = gr.Slider(label="decoderinv", minimum=0.0, maximum=1.0, step=1.0, value=0.0)
+                            transferweight = gr.Slider(label="transferweight", minimum=-1.0, maximum=100.0, step=0.1, value=1.0)
+                            originweight = gr.Slider(label="originweight", minimum=-1.0, maximum=1000.0, step=0.1, value=10.0)
+                            text_lr = gr.Slider(label="text_lr", minimum=0.0, maximum=1.0, step=0.01, value=0.1)
 
             inputs = [
                 image, albedo, albedo_edited, normal, normal_edited, roughness, roughness_edited,
                 metallic, metallic_edited, irradiance, irradiance_edited, irradiance_text, prompt,
                 seed, inference_step, optimization_step, num_samples, guidance_scale, image_guidance_scale,
-                traintext, saveprompt, loadprompt, loadnoise, skipinverse, augtext, decoderinv,
+                rgb2x_steps, traintext, saveprompt, loadprompt, loadnoise, skipinverse, augtext, decoderinv,
                 transferweight, originweight, text_lr,
             ]
             run_button.click(fn=run_pipeline, inputs=inputs, outputs=result_gallery, queue=True)
