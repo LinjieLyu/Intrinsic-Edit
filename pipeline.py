@@ -65,9 +65,7 @@ class VaeImageProcrssorAOV(VaeImageProcessor):
         do_gamma_correction: bool = True,
     ):
         if not isinstance(image, torch.Tensor):
-            raise ValueError(
-                f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
-            )
+            raise ValueError(f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor")
         if output_type not in ["latent", "pt", "np", "pil"]:
             deprecation_message = (
                 f"the output_type {output_type} is outdated and has been set to `np`. Please make sure to set it to one of these instead: "
@@ -87,12 +85,10 @@ class VaeImageProcrssorAOV(VaeImageProcessor):
         if do_denormalize is None:
             do_denormalize = [self.config.do_normalize] * image.shape[0]
 
-        image = torch.stack(
-            [
-                self.denormalize(image[i]) if do_denormalize[i] else image[i]
-                for i in range(image.shape[0])
-            ]
-        )
+        image = torch.stack([
+            self.denormalize(image[i]) if do_denormalize[i] else image[i]
+            for i in range(image.shape[0])
+        ])
 
         # Gamma correction
         if do_gamma_correction:
@@ -181,9 +177,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcrssorAOV(
-            vae_scale_factor=self.vae_scale_factor
-        )
+        self.image_processor = VaeImageProcrssorAOV(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config()
 
     def _encode_prompt(
@@ -240,34 +234,21 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(
-                prompt, padding="longest", return_tensors="pt"
-            ).input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[
-                -1
-            ] and not torch.equal(text_input_ids, untruncated_ids):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}")
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
-            print(text_input_ids.shape)
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
+            # print(text_input_ids.shape)
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
@@ -313,10 +294,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                 return_tensors="pt",
             )
 
-            if (
-                hasattr(self.text_encoder.config, "use_attention_mask")
-                and self.text_encoder.config.use_attention_mask
-            ):
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = uncond_input.attention_mask.to(device)
             else:
                 attention_mask = None
@@ -330,25 +308,15 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
-
-            negative_prompt_embeds = negative_prompt_embeds.to(
-                dtype=self.text_encoder.dtype, device=device
-            )
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(
-                1, num_images_per_prompt, 1
-            )
-            negative_prompt_embeds = negative_prompt_embeds.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             # pix2pix has two  negative embeddings, and unlike in other pipelines latents are ordered [prompt_embeds, negative_prompt_embeds, negative_prompt_embeds]
-            prompt_embeds = torch.cat(
-                [prompt_embeds, negative_prompt_embeds, negative_prompt_embeds]
-            )
+            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds, negative_prompt_embeds])
 
         return prompt_embeds
 
@@ -358,17 +326,13 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
 
-        accepts_eta = "eta" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
         # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
@@ -506,16 +470,9 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                 standard_warn=False,
             )
             additional_image_per_prompt = batch_size // image_latents.shape[0]
-            image_latents = torch.cat(
-                [image_latents] * additional_image_per_prompt, dim=0
-            )
-        elif (
-            batch_size > image_latents.shape[0]
-            and batch_size % image_latents.shape[0] != 0
-        ):
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts."
-            )
+            image_latents = torch.cat([image_latents] * additional_image_per_prompt, dim=0)
+        elif batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] != 0:
+            raise ValueError(f"Cannot duplicate `image` of batch size {image_latents.shape[0]} to {batch_size} text prompts.")
         else:
             image_latents = torch.cat([image_latents], dim=0)
 
@@ -630,6 +587,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         traintext=False,
+        task_name="Running inference"
     ):
         # 0. Check inputs
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
@@ -816,6 +774,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            progress_bar.set_description(task_name)
             for i, t in enumerate(timesteps):
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
@@ -1056,7 +1015,6 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         latents=photo_latents
         latents=latents * self.scheduler.init_noise_sigma
 
-
         # decoder inverse optimization
         if decoderinv:
             print('decoder inverse optimization')
@@ -1182,7 +1140,6 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             False,
         ).detach())
 
-
         # Prompt optimization
         if traintext:
             prompt_embeds = train_text(
@@ -1204,41 +1161,36 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         # Fixed point inversion
         # Note during the inversion there is no cfg guidance, so the guidance_scale and image_guidance_scale are set to 0.0
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            T=timesteps[-1]
+            progress_bar.set_description("Running X→RGB inversion")
+            T = timesteps[-1]
             lambda_T = self.scheduler.lambda_t[-1]
             sigma_T = self.scheduler.sigma_t[-1]
             alpha_T = self.scheduler.alpha_t[-1]
             for i, t in enumerate(timesteps):
-                prev_timestep = (
-                    t
-                    - self.scheduler.config.num_train_timesteps
-                    // self.scheduler.num_inference_steps
-                )
-
+                prev_timestep = t - self.scheduler.config.num_train_timesteps // self.scheduler.num_inference_steps
                 s = t
                 t = prev_timestep
-
                 x_t = latents.detach().clone()
-                print(f"t: {t}, s: {s}, T: {T}")
-
+                # print(f"t: {t}, s: {s}, T: {T}")
                 latents, noise_s = self.fixedpoint_correction(
                     i,latents, s, t, x_t, order=1,latents_0=latents_0,image_latents=image_latents,
                     prompt_embeds=prompt_embeds, guidance_scale=guidance_scale,image_guidance_scale=image_guidance_scale,
                     guidance_rescale=guidance_rescale,step_size=1.0, scheduler=True,**extra_step_kwargs)
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
 
         return latents, prompt_embeds
 
-    # Find the previous latents from the current latents
-    # From https://github.com/smhongok/inv-dpm
+    # Find the previous latents from the current latents; from https://github.com/smhongok/inv-dpm
     # @torch.inference_mode()
-    def fixedpoint_correction(self, index,x, s, t, x_t, r=None, order=1, n_iter=40, step_size=0.1, th=2e-3,photo=None,mask=None,
-                                model_s_output=None, model_r_output=None, latents_0=None,image_latents=None, prompt_embeds=None, guidance_scale=0.0, image_guidance_scale=0.0,guidance_rescale=0.0,
-                                scheduler=False, factor=0.5, patience=20, anchor=False, warmup=True, warmup_time=20,**extra_step_kwargs):
+    def fixedpoint_correction(self, index, x, s, t, x_t, r=None, order=1, n_iter=40, step_size=0.1, th=2e-3, photo=None, mask=None,
+                                model_s_output=None, model_r_output=None, latents_0=None, image_latents=None, prompt_embeds=None, guidance_scale=0.0, image_guidance_scale=0.0, guidance_rescale=0.0,
+                                scheduler=False,factor=0.5, patience=20, anchor=False, warmup=True, warmup_time=20, **extra_step_kwargs):
         do_classifier_free_guidance = (guidance_scale >= 1.0 and image_guidance_scale >= 1.0)
         input_mean = self.scheduler.add_noise(latents_0, torch.zeros_like(latents_0), s)
-        input=x.detach().clone()
+        input = x.detach().clone()
         input.requires_grad_(True)
-        noise_optimizer=torch.optim.Adam([input], lr=step_size)
+        noise_optimizer = torch.optim.Adam([input], lr=step_size)
 
         lambda_s, lambda_t = self.scheduler.lambda_t[s], self.scheduler.lambda_t[t]
         sigma_s, sigma_t = self.scheduler.sigma_t[s], self.scheduler.sigma_t[t]
@@ -1314,9 +1266,10 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             if i % 10 == 0:
                 # free, total = torch.cuda.mem_get_info()
                 # mem_used_MB = (total - free) / 1024 ** 2
-                print(f"Loss: {n_loss.item()}") #, Memory used: {mem_used_MB} MB
+                # print(f"Loss: {n_loss.item()}") #, Memory used: {mem_used_MB} MB
+                pass
             if n_loss.item() < th:
-                print(f"Loss: {n_loss.item()}")
+                # print(f"Loss: {n_loss.item()}")
                 break
 
             # residual_sqr = ((input-input_mean)**2).detach()
@@ -1366,6 +1319,7 @@ class IntrinsicEditPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                 lr_scheduler.step()
             return z
 
+
 def get_cosine_schedule_with_warmup(
     optimizer: torch.optim.Optimizer,
     num_warmup_steps: int,
@@ -1398,15 +1352,9 @@ def get_cosine_schedule_with_warmup(
         # linear warmup phase
         if current_step < num_warmup_steps:
             return current_step / max(1, num_warmup_steps)
-
         # cosine
-        progress = (current_step - num_warmup_steps) / max(
-            1, num_training_steps - num_warmup_steps
-        )
-
-        cosine_lr_multiple = 0.5 * (
-            1.0 + math.cos(math.pi * num_cycles * 2.0 * progress)
-        )
+        progress = (current_step - num_warmup_steps) / max(1, num_training_steps - num_warmup_steps)
+        cosine_lr_multiple = 0.5 * (1.0 + math.cos(math.pi * num_cycles * 2.0 * progress))
         return max(0.0, cosine_lr_multiple)
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
@@ -1436,8 +1384,7 @@ class StepScheduler(ReduceLROnPlateau):
         self.mode_worse = None  # the worse value for the chosen mode
         self.eps = eps
         self.last_epoch = 0
-        self._init_is_better(mode=mode, threshold=threshold,
-                            threshold_mode=threshold_mode)
+        self._init_is_better(mode=mode, threshold=threshold, threshold_mode=threshold_mode)
         self._reset()
 
     def step(self, metrics, epoch=None):
@@ -1473,10 +1420,8 @@ class StepScheduler(ReduceLROnPlateau):
         if old_lr - new_lr > self.eps:
             self.current_lr = new_lr
             if self.verbose:
-                epoch_str = ("%.2f" if isinstance(epoch, float) else
-                            "%.5d") % epoch
-                print('Epoch {}: reducing learning rate'
-                        ' to {:.4e}.'.format(epoch_str,new_lr))
+                epoch_str = ("%.2f" if isinstance(epoch, float) else "%.5d") % epoch
+                print('Epoch {}: reducing learning rate to {:.4e}.'.format(epoch_str,new_lr))
 
 
 def train_text(
@@ -1512,7 +1457,7 @@ def train_text(
     rgb2x_unet.requires_grad_(False)
     rgb2x_unet.to(device)
 
-    description = f"Training "
+    description = f"Optimizing"
 
     # Optimizer creation
     model_input = photo_latents.detach().clone()
@@ -1525,8 +1470,7 @@ def train_text(
     encoder_hidden_states_init = encoder_hidden_states.detach().clone()
 
     if traintext:
-        text_lr = text_lr
-        description += f"prompt, lr={text_lr}"
+        description += f" prompt"
         encoder_hidden_states.requires_grad = True
         text_optimizer = torch.optim.AdamW(
             [encoder_hidden_states],
@@ -1553,9 +1497,10 @@ def train_text(
         for c in range(num_raovs):
             aov_name = required_aovs[c]
             if preprocessed_aovs[aov_name] is None:
-                print(aov_name)
+                # print(f"Running RGB→X for channel '{aov_name}'")
                 aov_input = torch.randn_like(rgb2x_noise)
-                for i, t in enumerate(rgb2x_timesteps):
+                for i, t in enumerate(progress.tqdm(rgb2x_timesteps, desc=f"Running RGB→X for {aov_name}")):
+                # for i, t in enumerate(rgb2x_timesteps):
                     scaled_aov_input = rgb2x_scheduler.scale_model_input(aov_input, t)
                     aov_concatenated_noisy_latents = torch.cat([scaled_aov_input, model_input], dim=1)
                     aov_pred = rgb2x_unet(aov_concatenated_noisy_latents, t, rgb2x_prompt_embeds[c].detach(), return_dict=False)[0]

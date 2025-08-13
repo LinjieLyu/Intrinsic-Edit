@@ -6,6 +6,9 @@ from diffusers import DPMSolverMultistepScheduler
 import gradio as gr
 from pipeline import IntrinsicEditPipeline
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub.file_download")
+
 
 def load_ldr_image(image_path, from_srgb=False, clamp=False, normalize=False):
     # Load png or jpg image
@@ -80,6 +83,8 @@ def create_intrinsicedit_demo():
         return_list = []
         rng = torch.Generator(device="cuda").manual_seed(seed)
         mask = torch.zeros_like(image)
+
+        print("--------")
 
         for i in range(num_samples):
             # Clean memory
@@ -157,6 +162,7 @@ def create_intrinsicedit_demo():
                 guidance_rescale=0.7,
                 output_type="np",
                 traintext=traintext,
+                task_name="Computing input reconstruction",
             ).images[0]
 
             if num_samples > 1:
@@ -191,6 +197,7 @@ def create_intrinsicedit_demo():
                 guidance_rescale=0.7,
                 output_type="np",
                 traintext=traintext,
+                task_name="Computing edited result",
             ).images[0]
 
             if num_samples > 1:
@@ -201,7 +208,7 @@ def create_intrinsicedit_demo():
         return return_list
 
     def create_ui():
-        block = gr.Blocks(theme=gr.themes.Default())
+        block = gr.Blocks(title="IntrinsicEdit demo", theme=gr.themes.Default())
         with block:
             with gr.Row():
                 gr.Markdown("# IntrinsicEdit demo")
